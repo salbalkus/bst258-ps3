@@ -1,0 +1,184 @@
+---
+title: "Problem Set #3"
+subtitle: "BST 258: Causal Inference -- Theory and Practice"
+author: "Salvador Balkus"
+date: ""
+format:
+  pdf:
+    documentclass: scrartcl
+    papersize: letter
+    fontsize: 11pt
+    geometry:
+      - margin=1in
+      - heightrounded
+    number-sections: false
+    colorlinks: true
+    link-citations: true
+    callout-appearance: simple
+    callout-icon: false
+    # figure options
+    fig-width: 6
+    fig-asp: 0.618
+    fig-cap-location: bottom
+    # code block options
+    code-line-numbers: false
+    code-block-bg: false
+    highlight-style: nord
+bibliography: refs.bib
+---
+
+```{r}
+#| echo: false
+#| message: false
+#| label: global-setup
+# NOTE: The immediately following line loads an renv environment located at the
+#       nearest "top-level" directory, as marked by a `.here` file, which is
+#       located by the here::here() function. This would be a useful tool if,
+#       say, this template.qmd file was not located at the top-level directory.
+#       Here, renv should activate automatically when this file is opened.
+#renv::load(here::here())
+library(here)
+```
+
+\footnotesize
+
+{{< pagebreak >}}
+
+## Question 1: Deriving the EIF of the Covariance
+
+::: {.callout-note title="Answer"}
+The EIF of $\Psi(P) = Cov_P(A,Y) = E_P((Y - E_P(Y))(A - E_P(A)))$ is
+
+$$\frac{d}{dt}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0}$$
+Let $P_t = t\tilde{P} + (1 - t)P$ which is a parametric submodel passing through $P$, and let $\tilde{a}$ and $\tilde{y}$ denote fixed values of $A$ and $Y$ under $\tilde{P}$, respectively.  Applying the chain rule hint, we have that the above is
+
+\begin{align*}
+  \frac{d}{dt}E_{P_t}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0} = \\
+  E_{P}\Big((-\frac{d}{dt}E_{P_t}(Y)\Bigr\rvert_{t = 0})(A - E_{P}(A))\Big) + \\
+  E_{P}\Big((-\frac{d}{dt}E_{P_t}(A)\Bigr\rvert_{t = 0})(Y - E_{P}(Y))\Big) + \\
+  (\tilde{y} - E_{P}(Y))(\tilde{a} - E_P(A)) - \Psi(P) =\\
+  -(\tilde{y} - E_P(Y))\underbrace{E_P(A - E_P(A))}_{=0} - (\tilde{a} - E_P(A))\underbrace{E_P(Y - E_P(Y))}_{=0} \\
+  + (\tilde{y} - E_{P}(Y))(\tilde{a} - E_P(A)) - \Psi(P)
+\end{align*}
+
+which implies  
+
+$$\frac{d}{dt}E_{P_t}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0} = (y - E_{P}(Y))(a - E_P(A)) - \Psi(P)$$
+
+is the EIF of the covariance, completing the proof.
+
+:::
+
+{{< pagebreak >}}
+
+## Question 2: Deriving the EIF of the Expected Conditional Covariance
+
+::: {.callout-note title="Answer"}
+
+Now, $\Psi(P) = E(Cov_P(Y, A | L)) = E_P((Y - E_P(Y | L))(A - E_P(A | L)))$. Following the same chain rule results on the covariance from Question 1, we have that
+
+\begin{align*}
+\frac{d}{dt}\Psi(P)\rvert_{t = 0} = \frac{d}{dt}E_P((Y - E_P(Y | L))(A - E_P(A | L)))\rvert_{t = 0} = \\
+  E_{P}\Big((-\frac{d}{dt}E_{P_t}(Y|L)\Bigr\rvert_{t = 0})(A - E_{P}(A|L))\Big) + \\
+  E_{P}\Big((-\frac{d}{dt}E_{P_t}(A|L)\Bigr\rvert_{t = 0})(Y - E_{P}(Y|L))\Big) + \\
+  (\tilde{y} - E_{P}(Y|L))(\tilde{a} - E_P(A|L)) - \Psi(P)
+\end{align*}
+
+Then, applying the hint, we can plug
+
+$$-\frac{d}{dt}E_{P_t}(Y | L)\rvert_{t = 0} = - \frac{I_\tilde{y}}{f(y)}\Big(\tilde{y} - E_P(Y|L)\Big)$$
+and
+
+$$-\frac{d}{dt}E_{P_t}(A | L)\rvert_{t = 0} = - \frac{I_\tilde{a}}{f(a)}\Big(\tilde{a} - E_P(A|L)\Big)$$
+into the first two terms of the above to get 
+
+\begin{align*}
+E_{P}\Big((-\frac{d}{dt}E_{P_t}(Y|L)\Bigr\rvert_{t = 0})(A - E_{P}(A|L))\Big) + \\
+  E_{P}\Big((-\frac{d}{dt}E_{P_t}(A|L)\Bigr\rvert_{t = 0})(Y - E_{P}(Y|L))\Big)
+-E_P\Big(\frac{I_\tilde{y}}{f(y)}\Big(\tilde{y} - E_P(Y|L)\Big) - \\
+E_P(\frac{I_\tilde{a}}{f(a)}\Big(\tilde{a} - E_P(A|L)) \\
+= -\frac{I_\tilde{y}}{f(y)}\Big(\tilde{y} - E_P(Y | L)\Big)\Big(\underbrace{E(A) - E(E(A|L))}_{= E(A) - E(A) = 0}\Big)\\
+ -\frac{I_\tilde{a}}{f(a)}\Big(\tilde{a} - E_P(A | L)\Big)\Big(\underbrace{E(Y) - E(E(Y|L))}_{= E(Y) - E(Y) = 0}\Big)\\
+= 0 + 0 = 0
+\end{align*}
+
+Therefore, the influence function of the conditional covariance is
+
+$$\frac{d}{dt}\Psi(P)\rvert_{t = 0} = \Big(\tilde{y} - E(Y|L)\Big)\Big(\tilde{a} - E(A|L)\Big) - \Psi(P)$$
+
+:::
+
+{{< pagebreak >}}
+
+## Question 3: The One-Step Estimator
+
+::: {.callout-note title="Answer"}
+
+```{r}
+library(fMultivar)
+
+expit <- function(x){exp(x) / (1+exp(x))}
+cov_func <- function(L){(L / 10) + 0.1}
+
+dgp <- function(n){
+  # Generate the data
+  m = 5
+  p = 0.4
+  L = rbinom(n, m, p)
+  AY = sapply(cov_func(L), function(x){rnorm2d(1, x)})
+  A = AY[1,] + L
+  Y = AY[2,] + 0.5 * L
+  dat = data.frame(L = L, A = A, Y = Y)
+  
+  # Get the true value of the parameter
+  x = unique(L)
+  psi = sum(cov_func(x) * dbinom(x, m, p))
+  
+  return(list(dat = dat, psi = psi))
+}
+
+dgp(100)
+
+onestep.condcov <- function(A, Y, EA, EY){
+  IF = (A - EA) * (Y - EY)
+  return(mean(IF))
+}
+
+sim = dgp(100)
+dat = sim$dat
+
+# Fit nuisance estimators
+EA.model = lm(A ~ L, dat)
+EA = predict(EA.model, dat)
+EY.model = lm(Y ~ A + L, dat)
+EY = predict(EY.model, dat)
+
+onestep.condcov(dat$A, dat$Y, EA, EY)
+  
+  
+  
+
+
+```
+
+
+:::
+
+{{< pagebreak >}}
+
+## Question 4: Variance-Weighted Treatment Effect
+
+::: {.callout-note title="Answer"}
+:::
+
+{{< pagebreak >}}
+
+## Question 5: Variance-Weighted Treatment Effect in the NHEFS Dataset
+
+::: {.callout-note title="Answer"}
+:::
+
+## References
+
+::: {#refs}
+:::
