@@ -112,9 +112,9 @@ $$\frac{d}{dt}\Psi(P)\rvert_{t = 0} = \Big(\tilde{y} - E(Y|L)\Big)\Big(\tilde{a}
 
 ## Question 3: The One-Step Estimator
 
-::: {.callout-note title="Answer"}
+::: {.callout-note title="Part (a)"}
 
-```{r}
+```{r, cache=TRUE}
 library(fMultivar)
 
 expit <- function(x){exp(x) / (1+exp(x))}
@@ -124,44 +124,72 @@ dgp <- function(n){
   # Generate the data
   m = 5
   p = 0.4
-  L = rbinom(n, m, p)
-  AY = sapply(cov_func(L), function(x){rnorm2d(1, x)})
-  A = AY[1,] + L
-  Y = AY[2,] + 0.5 * L
-  dat = data.frame(L = L, A = A, Y = Y)
+  lambda = 10
+  L1 = rbinom(n, m, p)
+  L2 = rpois(n, lambda)
+  AY = sapply(cov_func(L1), function(x){rnorm2d(1, x)})
+  A = AY[1,] + L1 + 0.1 * L2
+  Y = AY[2,] + 0.5 * L1 + 0.1 * L2
+  dat = data.frame(L1 = L1, L2 = L2, A = A, Y = Y)
   
   # Get the true value of the parameter
-  x = unique(L)
+  x = unique(L1)
   psi = sum(cov_func(x) * dbinom(x, m, p))
   
   return(list(dat = dat, psi = psi))
 }
 
-dgp(100)
-
 onestep.condcov <- function(A, Y, EA, EY){
   IF = (A - EA) * (Y - EY)
-  return(mean(IF))
+  psi = mean(IF)
+  c(mu = psi, sigma2 = mean((IF - psi)^2))
 }
 
-sim = dgp(100)
-dat = sim$dat
+sim.onestep <- function(n){
+  sim = dgp(n)
+  dat = sim$dat
 
-# Fit nuisance estimators
-EA.model = lm(A ~ L, dat)
-EA = predict(EA.model, dat)
-EY.model = lm(Y ~ A + L, dat)
-EY = predict(EY.model, dat)
+  # Fit nuisance estimators
+  EA.model = lm(A ~ L1 + L2, dat)
+  EA = predict(EA.model, dat)
+  EY.model = lm(Y ~ L1 + L2, dat)
+  EY = predict(EY.model, dat)
 
-onestep.condcov(dat$A, dat$Y, EA, EY)
+  res = onestep.condcov(dat$A, dat$Y, EA, EY)
+  ci.width = 1.96 * sqrt(res["sigma2"] / n)
+  ci = c(res["mu"] - ci.width, res["mu"] + ci.width)
+  cover = sim$psi >= ci[1] & sim$psi <= ci[2]
   
-  
-  
+  c(bias = res["mu"] - sim$psi, sigma2 = res["sigma2"], cover = cover)
+}
 
+
+simulate <- function(n, iters){
+  result = replicate(iters, sim.onestep(n))
+  
+  c(bias = mean(result["bias.mu",]), 
+    sigma2 = mean(result["sigma2.sigma2",]), 
+    coverage = mean(result["cover.mu",]))
+}
+
+
+sim.result = sapply(c(100, 400, 900, 1600, 2500), function(n){simulate(n, 100)})
+
+sim.result
+  
 
 ```
 
+:::
 
+::: {.callout-note title="Part (b)"}
+
+
+
+:::
+
+
+::: {.callout-note title="Part (c)"}
 :::
 
 {{< pagebreak >}}
