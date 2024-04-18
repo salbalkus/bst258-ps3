@@ -155,8 +155,7 @@ Then, we define a function to compute the OS estimator of the conditional covari
 # One-step estimator for expected conditional covariance
 onestep.condcov <- function(A, Y, EA, EY){
   IF = (A - EA) * (Y - EY)
-  psi = mean(IF)
-  c(mu = psi, sigma2 = mean((IF - psi)^2))
+  return(mean(IF))
 }
 
 # Function to simulate data, fit correct parametric nuisances, and compute OS
@@ -172,57 +171,65 @@ sim.onestep <- function(n){
 
   # Compute estimator and CIs
   res = onestep.condcov(dat$A, dat$Y, EA, EY)
-  ci.width = 1.96 * sqrt(res["sigma2"] / n)
-  ci = c(res["mu"] - ci.width, res["mu"] + ci.width)
-  cover = sim$psi >= ci[1] & sim$psi <= ci[2]
-  
-  c(bias = res["mu"] - sim$psi, sigma2 = res["sigma2"], cover = cover)
+
+  # Return the bias
+  return(res - sim$psi)
 }
 
 # Function to run many replicates of a simulation and summarize results
 simulate <- function(n, iters){
-  result = replicate(iters, sim.onestep(n))
-  c(bias = mean(result["bias.mu",]), 
-    varbias = var(result["bias.mu",]),
-    sigma2 = mean(result["sigma2.sigma2",]),
-    varsigma2 = var(result["sigma2.sigma2",]),
-    coverage = mean(result["cover.mu",]))
+  replicate(iters, sim.onestep(n))
 }
 ```
 
-Below, we run the simulation across a range of sample sizes, computing the bias and variance (which is converted into 95% confidence intervals) of the estimator with *correctly-specified parametric nuisance estimates*.
+Below, we run the simulation across a range of sample sizes, computing the bias of the estimator with *correctly-specified parametric nuisance estimates*.
 
 ```{r, cache=T}
 # Run simulation
 n = c(100, 400, 900, 1600, 2500)
-iters = 200
+iters = 100
 sim.result = sapply(n, function(N){simulate(N, iters)})
 
-# Create dataframe and compute CIs
-sim.df = data.frame(t(sim.result))
-sim.df$lower = sim.df$bias - 1.96 * sqrt(sim.df$varbias/iters)
-sim.df$upper = sim.df$bias + 1.96 * sqrt(sim.df$varbias/iters)
+# Get simulation results into a dataframe
+sim.df = data.frame(sim.result) 
+colnames(sim.df) = as.character(n)
+sim.df = sim.df %>% pivot_longer(as.character(n))
+colnames(sim.df) = c("Samples", "Bias")
+sim.df$Samples = as.numeric(sim.df$Samples)
 
 ```
 
-Below is a plot of the average empirical bias with 95% confidence intervals at each sample size for the OS estimator in the given bivariate normal simulation. We can see that, although it is initially biased, the OS estimator's bias converges to 0 as sample size increases.
+The plot below displays the sampling distribution of the empirical bias of the OS estimate in the given bivariate normal simulation across sample sizes. From this, we can see that the estimator progressively converges to a normal distribution, with tighter standard error at higher sample sizes. Hence, this provides empirical evidence that the OS estimator with correctly-specific parametric nuisance estimators is asymptotically normal.
 
 ```{r, cache=T}
-ggplot(sim.df) + geom_line(aes(x = n, y = bias), linewidth = 1.1, color = "blue") + 
-  geom_errorbar(aes(x = n, ymin = lower, ymax = upper), linewidth = 1.1, color = "blue", width = 100) + 
-  geom_hline(aes(yintercept = 0)) + theme_light() + 
-  ggtitle("One-Step Estimator - Bias")
-
+ggplot(sim.df) + 
+  geom_histogram(aes(x = Bias), 
+                 fill = "gray", bins = 40) + 
+  facet_grid(rows = "Samples", ) + 
+  geom_vline(aes(xintercept = 0)) + 
+  theme_light() +
+  ggtitle("One-Step Sampling Bias (Parametric Nuisances)")
 ```
 
-To evaluate the performance of the analytic variance estimator of the OS procedure, we also plot the coverage probability of the 95% confidence interval below. Although time constraints have restricted us to a small number of replicates, we can see that the coverage is roughly nominal. 
+Summary statistics from the plot above are computed and displayed below, including the mean bias, empirical variance, and 95% confidence intervals based on the normal approximation. This table is plotted as a line plot with error bars below. We can see that the mean bias does appear to generally decrease with sample sizes, showing that the OS estimator converges to the truth. The variance also decreases with sample size as well.
 
 ```{r, cache=T}
-ggplot(sim.df) + geom_line(aes(x = n, y = coverage), color = "blue", linewidth = 1) + 
-  geom_hline(aes(yintercept = 0.95)) + 
-  scale_y_continuous(limits = c(0.6, 1)) + 
+summary.stats = sim.df %>% group_by(Samples) %>% 
+  summarize(`Mean Bias` = mean(Bias), `Emp. Var.`= var(Bias),
+            `Upper 95%` = mean(Bias) + 1.96 * sqrt(var(Bias)), 
+            `Lower 95%` = mean(Bias) - 1.96 * sqrt(var(Bias)))
+summary.stats
+```
+
+```{r, cache=T}
+ggplot(summary.stats) + 
+  geom_line(aes(x = Samples, y = `Mean Bias`), 
+            linewidth = 1.1, color = "blue") + 
+  geom_errorbar(aes(x = n, ymin = `Lower 95%`, ymax = `Upper 95%`), 
+                linewidth = 1.1, color = "blue", width = 100) + 
+  geom_hline(aes(yintercept = 0)) + 
   theme_light() + 
-  ggtitle("One-Step Estimator - 95% CI Coverage")
+  ggtitle("One-Step Estimator, Parametric Nuisance Estimators - Bias")
 ```
 
 Overall, the OS estimator appears to perform as expected when *correctly-specified parametric nuisance models* are used.
@@ -231,7 +238,7 @@ Overall, the OS estimator appears to perform as expected when *correctly-specifi
 
 ::: {.callout-note title="Part (b)"}
 
-Next, we repeat the same simulation from (a), but using super learning to estimate nuisance parameters instead of a correctly-specified model. To observe results when the correct parametric model is not included, but more flexible models are used, the super learner includes three learners: a decision tree, a GAM, and a random forest. These are reasonably flexible models that can be fit in a computationally-efficient enough manner for simulation. The code to simulate super-learned estimates and compute the OS estimates and CIs is below.
+Next, we repeat the same simulation from (a), but using super learning to estimate nuisance parameters instead of a correctly-specified model. To observe results when the correct parametric model is not included, but more flexible models are used, the super learner includes three learners: a decision tree, a GAM, and a random forest. These are reasonably flexible models that can be fit in a computationally-efficient enough manner for simulation. The code to simulate super-learned estimates and compute the OS estimates (and their bias) is below.
 
 ```{r, cache=T}
 
@@ -250,65 +257,72 @@ sim.onestep.sl <- function(n){
 
   # Compute OS estimates and CIs
   res = onestep.condcov(dat$A, dat$Y, EA, EY)
-  ci.width = 1.96 * sqrt(res["sigma2"] / n)
-  ci = c(res["mu"] - ci.width, res["mu"] + ci.width)
-  cover = sim$psi >= ci[1] & sim$psi <= ci[2]
-  
-  c(bias = res["mu"] - sim$psi, sigma2 = res["sigma2"], cover = cover)
+  return(res - sim$psi)
 }
 
 # Function to run many simulations with super-learned nuisances
 simulate.sl <- function(n, iters){
-  result = replicate(iters, sim.onestep.sl(n))
-  c(bias = mean(result["bias.mu",]), 
-    varbias = var(result["bias.mu",]),
-    sigma2 = mean(result["sigma2.sigma2",]),
-    varsigma2 = var(result["sigma2.sigma2",]),
-    coverage = mean(result["cover.mu",]))
+  replicate(iters, sim.onestep.sl(n))
 }
 
 ```
 
-The code below runs the simulation with super learning and summarizes results.
+Below, we run the simulation across a range of sample sizes, computing the bias of the estimator with *flexible super learning nuisance estimatators*.
 
 ```{r, cache=T}
-sim.result.sl = sapply(n, function(N){simulate.sl(N, 5)})
+# Run simulation
+iters = 100
+sim.result.sl = sapply(n, function(N){simulate(N, iters)})
 
-# Create dataframe and compute CIs
-sim.sl.df = data.frame(t(sim.result.sl))
-sim.sl.df$lower = sim.sl.df$bias - 1.96 * sqrt(sim.sl.df$varbias/iters)
-sim.sl.df$upper = sim.sl.df$bias + 1.96 * sqrt(sim.sl.df$varbias/iters)
+# Get simulation results into a dataframe
+sim.df.sl = data.frame(sim.result.sl) 
+colnames(sim.df.sl) = as.character(n)
+sim.df.sl = sim.df.sl %>% pivot_longer(as.character(n))
+colnames(sim.df.sl) = c("Samples", "Bias")
+sim.df.sl$Samples = as.numeric(sim.df.sl$Samples)
 
 ```
-
-As in part (a), the first plot depicts the bias of the estimator. We can see that even using super learning, the OS estimator converges to the truth as sample size increases.
+The plot below again displays the sampling distribution of the empirical bias of the OS estimate in the given bivariate normal simulation across sample sizes, this time using flexible super-learned estimators for nuisance parameters. We can see that this estimator also progressively converges to a normal distribution, with tighter standard error at higher sample sizes. Hence, the OS estimator appears to be asymptotically normal even when nuisances are estimated via flexible regression techniques.
 
 ```{r, cache=T}
-ggplot(sim.sl.df) + geom_line(aes(x = n, y = bias), linewidth = 1.1, color = "orange") + 
-  geom_errorbar(aes(x = n, ymin = lower, ymax = upper), linewidth = 1.1, color = "orange", width = 100) + 
+ggplot(sim.df.sl) + 
+  geom_histogram(aes(x = Bias), 
+                 fill = "gray", bins = 40) + 
+  facet_grid(rows = "Samples", ) + 
+  geom_vline(aes(xintercept = 0)) + 
+  theme_light() +
+  ggtitle("One-Step Sampling Bias (Flexible Nuisances)")
+```
+
+Summary statistics from the plot above are computed and displayed below, including the mean bias, empirical variance, and 95% confidence intervals based on the normal approximation. The table is plotted as a line plot with error bars below. Again, we observe that the mean bias does appear to generally decrease with sample sizes, showing that the OS estimator converges to the truth. The variance also decreases with sample size as well.
+
+```{r, cache=T}
+summary.stats.sl = sim.df.sl %>% group_by(Samples) %>% 
+  summarize(`Mean Bias` = mean(Bias), `Emp. Var.`= var(Bias),
+            `Upper 95%` = mean(Bias) + 1.96 * sqrt(var(Bias)), 
+            `Lower 95%` = mean(Bias) - 1.96 * sqrt(var(Bias)))
+summary.stats.sl
+```
+
+```{r, cache=T}
+ggplot(summary.stats.sl) + 
+  geom_line(aes(x = Samples, y = `Mean Bias`), 
+            linewidth = 1.1, color = "orange") + 
+  geom_errorbar(aes(x = n, ymin = `Lower 95%`, ymax = `Upper 95%`), 
+                linewidth = 1.1, color = "orange", width = 100) + 
   geom_hline(aes(yintercept = 0)) + 
   theme_light() + 
-  ggtitle("One-Step Estimator - Bias")
+  ggtitle("One-Step Estimator, Flexible Nuisance Estimators - Bias")
 
 ```
-
-Furthermore, as in part (a), we 
-
-```{r, cache=T}
-ggplot(sim.sl.df) + geom_line(aes(x = n, y = coverage), color = "orange", linewidth = 1) + 
-  geom_hline(aes(yintercept = 0.95)) + 
-  scale_y_continuous(limits = c(0.6, 1)) + 
-  theme_light() + 
-  ggtitle("One-Step Estimator - 95% CI Coverage")
-```
-
-
 
 :::
 
 ::: {.callout-note title="Part (c)"}
 
-Little difference.
+We can see that there was little difference in the performance of the one-step estimator for this simple data generating process, no matter whether we used correctly-specified parametric estimator or flexible, super-learned regression estimators for nuisance estimation. Both were asymptotically normal, with similar bias and variance, and large sample sizes yielding better variance.
+
+Since we never truly know whether an underlying parametric model is correct, we often prefer more flexible machine-learning-based models, and with the one-step estimator, we can generally be assured that (in simple settings) these flexible models will not drastically change our results.
 
 :::
 
@@ -324,7 +338,7 @@ $$\psi^{VTE} = \Psi(P) = \frac{E(Cov(Y,A|L))}{E(Var(A|L))}$$
 In this part, our goal is to show
 
 $$\Psi(P) = \frac{E(Cov(Y,A|L))}{E(Var(A|L))} = E(w(L)E(Y^1 - Y^0|L))$$
-where $W(L) = \frac{Var(A|L)}{E(Var(A|L))}$. To do this, we first note that by the definition of conditional variance, since $Y^a$ is independent of $A$, we have
+where $w(L) = \frac{Var(A|L)}{E(Var(A|L))}$. To do this, we first note that by the definition of conditional variance, since $Y^a$ is independent of $A$, we have
 
 \begin{align*}
 E(w(L)E(Y^1 - Y^0|L)) = \frac{E(Var(A|L)E(Y^1 - Y^0|L))}{E(Var(A|L))} \\
@@ -347,6 +361,9 @@ proving the desired expression holds.
 
 :::
 
+{{< pagebreak >}}
+
+
 ::: {.callout-note title="Derivation of Influence Function of VTE"}
 
 To compute the EIF, we simply apply the quotient rule to the fraction and plug in the EIF of the conditional covariance computed previously (noting that $E(Var(A|L)) = E(Cov(A, A|L))$, for which we can plug in the EIF of the conditional covariance of $A$ with itself):
@@ -354,9 +371,13 @@ To compute the EIF, we simply apply the quotient rule to the fraction and plug i
 \begin{align*}
 \frac{d}{dt}\Psi(P_t)\Bigr\rvert_{t = 0} = \frac{d}{dt}\frac{E_{P_t}(Cov_{P_t}(Y,A|L))}{E_{P_t}(Var_{P_t}(A|L))} \\
 = \frac{\frac{d}{dt}E_{P_t}(Cov_{P_t}(Y,A|L))\Bigr\rvert_{t = 0} \cdot E_{P}(Cov_{P}(A,A|L))}{E_P(Cov_P(A, A|L))^2} - \frac{\frac{d}{dt}E_{P_t}(Cov_{P_t}(A,A|L))\Bigr\rvert_{t = 0} \cdot E_{P}(Cov_{P}(Y,A|L))}{E_P(Cov_P(A, A|L))^2} \\
-= \frac{(Y - E_P(Y|L))(A - E_P(A|L)) - E_P(Cov_P(Y,A|L))}{E_P(Cov_P(A, A|L))} - \frac{(A - E_P(A | L))^2E_P(Cov_P(Y,A|L))}{E_P(Cov_P(A, A|L))^2}\\ + \frac{E_P(Cov_P(Y,A|L))}{E_P(Cov_P(Y,A|L))}\\
+= \frac{(Y - E_P(Y|L))(A - E_P(A|L))}{E_P(Cov_P(A, A|L))} - \frac{(A - E_P(A | L))^2E_P(Cov_P(Y,A|L))}{E_P(Cov_P(A, A|L))^2}\\ -  \frac{E_P(Cov_P(Y,A|L)}{E_P(Cov_P(Y,A|L)} + \frac{E_P(Cov_P(Y,A|L))}{E_P(Cov_P(Y,A|L))}\\
 = \frac{(A - E_P(A |L))^2}{E(Var(A|L))}\Big(\frac{Y - E(Y|L)}{A - E(A|L)} - \Psi(P)\Big)
 \end{align*}
+
+Therefore, the EIF of the VTE is
+
+$$\frac{(A - E_P(A |L))^2}{E(Var(A|L))}\Big(\frac{Y - E(Y|L)}{A - E(A|L)} - \Psi(P)\Big)$$
 
 :::
 
@@ -373,11 +394,11 @@ Using the EIF result from the previous part of this problem at $P = \hat{P}_n$, 
 = \Psi(\hat{P}_n) + \frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))(Y_i - E_{\hat{P}_n}(Y_i|L_i))}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))} - \frac{(A_i - E_{\hat{P}_n}(A_i |L))^2}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\Psi(\hat{P}_n)\\
 \end{align*}
 
-But note that if $\Psi(\hat{P}_n) \rightarrow \Psi(\tilde{P})$ then $\frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))^2}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\Psi(\hat{P}_n) \overset{P}{\rightarrow} \Psi(\tilde{P})$ which implies that
+But note that if $\Psi(\hat{P}_n) \rightarrow \Psi(\tilde{P})$ then $\frac{1}{n}\sum_{i=1}^n (A_i - E_{\hat{P}_n}(A_i |L))^2 \cdot \frac{1}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\cdot\Psi(\hat{P}_n) \overset{P}{\rightarrow} \Psi(\tilde{P})$ by the weak law of large numbers and the continuous mapping theorem, which implies that
 
 $$\Psi(\hat{P}_n) - \frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))^2}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\Psi(\hat{P}_n) = o_P(1)$$
 
-so the one-step bias-corrected estimator is 
+so these terms cancel, and the one-step bias-corrected estimator is 
 
 $$\frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))(Y_i - E_{\hat{P}_n}(Y_i|L_i))}{E_{\hat{P}_n}((A_i - E_{\hat{P}_n}(A_i |L))^2)} + o_P(1)$$
 
@@ -389,9 +410,11 @@ $$\frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))(Y_i - E_{\hat{P}_n
 
 ## Q5: Variance-Weighted Treatment Effect in the NHEFS Dataset
 
-::: {.callout-note title="Calculate VTE"}
+::: {.callout-note title="Calculate the VTE between Smoking Cessation and Weight Gain"}
 
-```{r}
+In this problem, we estimate the VTE in the NHEFS Dataset, previously used for Problem Set 2. First, we implement the One-Step VTE estimator using the influence function derived above. This code returns the estimate and its variance based on the influence function.
+
+```{r, cache=T}
 # Define the one-step estimator for the variance-weighted treatment effect
 vte_onestep <- function(x){
   # Get intermediate variables
@@ -414,8 +437,9 @@ vte_onestep <- function(x){
 
 ```
 
+Next, we load and clean the data, and fit nuisance estimators. Super learning with sample-splitting/cross-fitting is used to estimate the conditional means involved in the VTE influence function. Since this data has a mix of several continuous and factor variables, and $A$ is binary while $Y$ is continuous, a random forest and a multivariate adaptive regression spline are fit in the super learner ensemble. These learners were chosen because they can flexibly model potential nonlinearities and interaction terms while handling multiple types of data among the target and predictor variables. A GLM is also included as a baseline/benchmark simple model. The results of the VTE using these crossfit nuisance parameters are output below. We can see the VTE is about 3.4.
 
-```{r}
+```{r, cache=T}
 # Prepare the data
 df = read.csv("nhefs.csv") %>% 
   select(wt82_71, qsmk, sex, age, race, education, 
@@ -438,14 +462,16 @@ x = data.frame(A = df$qsmk, Y = df$wt82_71,
 # Get one-step estimate
 result = vte_onestep(x)
 result
-
-
 ```
 :::
 
-::: {.callout-note title="Calculate VTE"}
 
-```{r}
+
+::: {.callout-note title="Analytically Calculate Standard Error and Compare to Bootstrap"}
+
+For simplicity, the OS standard error based on the influence function was included in the OS estimator code above (for code reuse). See the first code block for Q5. The code below bootstraps the VTE estimate above using the classical nonparametric bootstrap (implemented in the `boot` package) and computes the bootstrap standard error. Both estimates are output below:
+
+```{r, cache=T}
 # Bootstrap the VTE One-step estimator statistic
 vte_onestep_boot <- function(x, d){vte_onestep(x[d,])}
 boot_result = boot(x, vte_onestep_boot, R = 1000)
@@ -453,9 +479,9 @@ se_boot = sqrt(var(boot_result$t[,1]))
 
 c(bootstrapped.se = se_boot, analytic = result["se"])
 
-
 ```
 
+We can see that the analytic and bootstrapped standard errors are very similar, both about 0.47. Hence, we can be confident that the influence-function-based analytic variance estimator probably performs well for this dataset.
 
 :::
 
