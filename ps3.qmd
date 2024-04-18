@@ -52,6 +52,8 @@ library(boot)
 
 {{< pagebreak >}}
 
+GitHub Repository: [https://github.com/salbalkus/bst258-ps3](https://github.com/salbalkus/bst258-ps3)
+
 ## Q1: Deriving the EIF of the Covariance
 
 ::: {.callout-note title="Answer"}
