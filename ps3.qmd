@@ -38,43 +38,48 @@ bibliography: refs.bib
 #       Here, renv should activate automatically when this file is opened.
 #renv::load(here::here())
 library(here)
+library(fMultivar)
+library(tidyverse)
+library(SuperLearner)
+library(glmnet)
+library(earth)
+library(e1071)
+library(boot)
+
 ```
 
 \footnotesize
 
 {{< pagebreak >}}
 
-## Question 1: Deriving the EIF of the Covariance
+## Q1: Deriving the EIF of the Covariance
 
 ::: {.callout-note title="Answer"}
 The EIF of $\Psi(P) = Cov_P(A,Y) = E_P((Y - E_P(Y))(A - E_P(A)))$ is
 
-$$\frac{d}{dt}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0}$$
-Let $P_t = t\tilde{P} + (1 - t)P$ which is a parametric submodel passing through $P$, and let $\tilde{a}$ and $\tilde{y}$ denote fixed values of $A$ and $Y$ under $\tilde{P}$, respectively.  Applying the chain rule hint, we have that the above is
+$$\frac{d}{dt}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0}$$ Let $P_t = t\tilde{P} + (1 - t)P$ which is a parametric submodel passing through $P$, and let $\tilde{a}$ and $\tilde{y}$ denote fixed values of $A$ and $Y$ under $\tilde{P}$, respectively. Applying the chain rule hint, we have that the above is
 
 \begin{align*}
   \frac{d}{dt}E_{P_t}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0} = \\
   E_{P}\Big((-\frac{d}{dt}E_{P_t}(Y)\Bigr\rvert_{t = 0})(A - E_{P}(A))\Big) + \\
   E_{P}\Big((-\frac{d}{dt}E_{P_t}(A)\Bigr\rvert_{t = 0})(Y - E_{P}(Y))\Big) + \\
   (\tilde{y} - E_{P}(Y))(\tilde{a} - E_P(A)) - \Psi(P) =\\
-  -(\tilde{y} - E_P(Y))\underbrace{E_P(A - E_P(A))}_{=0} - (\tilde{a} - E_P(A))\underbrace{E_P(Y - E_P(Y))}_{=0} \\
-  + (\tilde{y} - E_{P}(Y))(\tilde{a} - E_P(A)) - \Psi(P)
+  -(\tilde{y} - E_P(Y))\underbrace{E_P(A - E_P(A))}_{=0} - (\tilde{a} - E_P(A))\underbrace{E_P(Y - E_P(Y))}_{=0} + 
+  (\tilde{y} - E_{P}(Y))(\tilde{a} - E_P(A)) - \Psi(P)
 \end{align*}
 
-which implies  
+which implies
 
-$$\frac{d}{dt}E_{P_t}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0} = (y - E_{P}(Y))(a - E_P(A)) - \Psi(P)$$
+$$\frac{d}{dt}E_{P_t}E_{P_t}\Big((Y - E_{P_t}(Y))(A - E_{P_t}(A))\Big)\Bigr\rvert_{t = 0} = (Y - E_{P}(Y))(A - E_P(A)) - \Psi(P)$$
 
 is the EIF of the covariance, completing the proof.
-
 :::
 
 {{< pagebreak >}}
 
-## Question 2: Deriving the EIF of the Expected Conditional Covariance
+## Q2: Deriving the EIF of the Expected Conditional Covariance
 
 ::: {.callout-note title="Answer"}
-
 Now, $\Psi(P) = E(Cov_P(Y, A | L)) = E_P((Y - E_P(Y | L))(A - E_P(A | L)))$. Following the same chain rule results on the covariance from Question 1, we have that
 
 \begin{align*}
@@ -86,38 +91,42 @@ Now, $\Psi(P) = E(Cov_P(Y, A | L)) = E_P((Y - E_P(Y | L))(A - E_P(A | L)))$. Fol
 
 Then, applying the hint, we can plug
 
-$$-\frac{d}{dt}E_{P_t}(Y | L)\rvert_{t = 0} = - \frac{I_\tilde{y}}{f(y)}\Big(\tilde{y} - E_P(Y|L)\Big)$$
+$$-\frac{d}{dt}E_{P_t}(Y | L)\rvert_{t = 0} = - \frac{I_{\tilde{y}}}{f(y)}\Big(\tilde{y} - E_P(Y|L)\Big)$$ 
+
 and
 
-$$-\frac{d}{dt}E_{P_t}(A | L)\rvert_{t = 0} = - \frac{I_\tilde{a}}{f(a)}\Big(\tilde{a} - E_P(A|L)\Big)$$
-into the first two terms of the above to get 
+$$-\frac{d}{dt}E_{P_t}(A | L)\rvert_{t = 0} = - \frac{I_{\tilde{a}}}{f(a)}\Big(\tilde{a} - E_P(A|L)\Big)$$
+
+into the first two terms of the above to get
 
 \begin{align*}
 E_{P}\Big((-\frac{d}{dt}E_{P_t}(Y|L)\Bigr\rvert_{t = 0})(A - E_{P}(A|L))\Big) + \\
   E_{P}\Big((-\frac{d}{dt}E_{P_t}(A|L)\Bigr\rvert_{t = 0})(Y - E_{P}(Y|L))\Big)
--E_P\Big(\frac{I_\tilde{y}}{f(y)}\Big(\tilde{y} - E_P(Y|L)\Big) - \\
-E_P(\frac{I_\tilde{a}}{f(a)}\Big(\tilde{a} - E_P(A|L)) \\
-= -\frac{I_\tilde{y}}{f(y)}\Big(\tilde{y} - E_P(Y | L)\Big)\Big(\underbrace{E(A) - E(E(A|L))}_{= E(A) - E(A) = 0}\Big)\\
- -\frac{I_\tilde{a}}{f(a)}\Big(\tilde{a} - E_P(A | L)\Big)\Big(\underbrace{E(Y) - E(E(Y|L))}_{= E(Y) - E(Y) = 0}\Big)\\
+-E_P\Big(\frac{I_{\tilde{y}}}{f(y)}\Big(\tilde{y} - E_P(Y|L)\Big) - \\
+E_P(\frac{I_{\tilde{a}}}{f(a)}\Big(\tilde{a} - E_P(A|L)) \\
+= -\frac{I_{\tilde{y}}}{f(y)}\Big(\tilde{y} - E_P(Y | L)\Big)\Big(\underbrace{E(A) - E(E(A|L))}_{= E(A) - E(A) = 0}\Big)\\
+ -\frac{I_{\tilde{a}}}{f(a)}\Big(\tilde{a} - E_P(A | L)\Big)\Big(\underbrace{E(Y) - E(E(Y|L))}_{= E(Y) - E(Y) = 0}\Big)\\
 = 0 + 0 = 0
 \end{align*}
 
 Therefore, the influence function of the conditional covariance is
 
-$$\frac{d}{dt}\Psi(P)\rvert_{t = 0} = \Big(\tilde{y} - E(Y|L)\Big)\Big(\tilde{a} - E(A|L)\Big) - \Psi(P)$$
-
+$$\frac{d}{dt}\Psi(P)\rvert_{t = 0} = \Big(Y - E(Y|L)\Big)\Big(A - E(A|L)\Big) - \Psi(P)$$
 :::
 
 {{< pagebreak >}}
 
-## Question 3: The One-Step Estimator
+## Q3: The One-Step Estimator
+
+The subparts below implement a simulation study that generates data, computes the one-step (OS) estimator, and plots results.
+
 
 ::: {.callout-note title="Part (a)"}
 
-```{r, cache=TRUE}
-library(fMultivar)
+First, we define a data generating process below, which simulates $A$ and $Y$ as bivariate normal random variables with covariance dependent on L and conditonal mean a linear function of $L$.
 
-expit <- function(x){exp(x) / (1+exp(x))}
+```{r, cache=T}
+# Define necessary functions to generate the data
 cov_func <- function(L){(L / 10) + 0.1}
 
 dgp <- function(n){
@@ -138,13 +147,19 @@ dgp <- function(n){
   
   return(list(dat = dat, psi = psi))
 }
+```
 
+Then, we define a function to compute the OS estimator of the conditional covariance, followed by a function to simulate DGP draws, estimate nuisance parameters using a (correctly specified) linear regression model, and compute OS estimates across many repetitions.
+
+```{r, cache=T}
+# One-step estimator for expected conditional covariance
 onestep.condcov <- function(A, Y, EA, EY){
   IF = (A - EA) * (Y - EY)
   psi = mean(IF)
   c(mu = psi, sigma2 = mean((IF - psi)^2))
 }
 
+# Function to simulate data, fit correct parametric nuisances, and compute OS
 sim.onestep <- function(n){
   sim = dgp(n)
   dat = sim$dat
@@ -155,6 +170,7 @@ sim.onestep <- function(n){
   EY.model = lm(Y ~ L1 + L2, dat)
   EY = predict(EY.model, dat)
 
+  # Compute estimator and CIs
   res = onestep.condcov(dat$A, dat$Y, EA, EY)
   ci.width = 1.96 * sqrt(res["sigma2"] / n)
   ci = c(res["mu"] - ci.width, res["mu"] + ci.width)
@@ -163,50 +179,283 @@ sim.onestep <- function(n){
   c(bias = res["mu"] - sim$psi, sigma2 = res["sigma2"], cover = cover)
 }
 
-
+# Function to run many replicates of a simulation and summarize results
 simulate <- function(n, iters){
   result = replicate(iters, sim.onestep(n))
-  
   c(bias = mean(result["bias.mu",]), 
-    sigma2 = mean(result["sigma2.sigma2",]), 
+    varbias = var(result["bias.mu",]),
+    sigma2 = mean(result["sigma2.sigma2",]),
+    varsigma2 = var(result["sigma2.sigma2",]),
     coverage = mean(result["cover.mu",]))
 }
+```
 
+Below, we run the simulation across a range of sample sizes, computing the bias and variance (which is converted into 95% confidence intervals) of the estimator with *correctly-specified parametric nuisance estimates*.
 
-sim.result = sapply(c(100, 400, 900, 1600, 2500), function(n){simulate(n, 100)})
+```{r, cache=T}
+# Run simulation
+n = c(100, 400, 900, 1600, 2500)
+iters = 200
+sim.result = sapply(n, function(N){simulate(N, iters)})
 
-sim.result
-  
+# Create dataframe and compute CIs
+sim.df = data.frame(t(sim.result))
+sim.df$lower = sim.df$bias - 1.96 * sqrt(sim.df$varbias/iters)
+sim.df$upper = sim.df$bias + 1.96 * sqrt(sim.df$varbias/iters)
 
 ```
+
+Below is a plot of the average empirical bias with 95% confidence intervals at each sample size for the OS estimator in the given bivariate normal simulation. We can see that, although it is initially biased, the OS estimator's bias converges to 0 as sample size increases.
+
+```{r, cache=T}
+ggplot(sim.df) + geom_line(aes(x = n, y = bias), linewidth = 1.1, color = "blue") + 
+  geom_errorbar(aes(x = n, ymin = lower, ymax = upper), linewidth = 1.1, color = "blue", width = 100) + 
+  geom_hline(aes(yintercept = 0)) + theme_light() + 
+  ggtitle("One-Step Estimator - Bias")
+
+```
+
+To evaluate the performance of the analytic variance estimator of the OS procedure, we also plot the coverage probability of the 95% confidence interval below. Although time constraints have restricted us to a small number of replicates, we can see that the coverage is roughly nominal. 
+
+```{r, cache=T}
+ggplot(sim.df) + geom_line(aes(x = n, y = coverage), color = "blue", linewidth = 1) + 
+  geom_hline(aes(yintercept = 0.95)) + 
+  scale_y_continuous(limits = c(0.6, 1)) + 
+  theme_light() + 
+  ggtitle("One-Step Estimator - 95% CI Coverage")
+```
+
+Overall, the OS estimator appears to perform as expected when *correctly-specified parametric nuisance models* are used.
 
 :::
 
 ::: {.callout-note title="Part (b)"}
 
+Next, we repeat the same simulation from (a), but using super learning to estimate nuisance parameters instead of a correctly-specified model. To observe results when the correct parametric model is not included, but more flexible models are used, the super learner includes three learners: a decision tree, a GAM, and a random forest. These are reasonably flexible models that can be fit in a computationally-efficient enough manner for simulation. The code to simulate super-learned estimates and compute the OS estimates and CIs is below.
+
+```{r, cache=T}
+
+# Function to simulate OS estimator with super-learned nuisances
+sim.onestep.sl <- function(n){
+  sim = dgp(n)
+  dat = sim$dat
+  
+  # Fit nuisance estimators via SL
+  lib = c("SL.rpart", "SL.gam", "SL.ranger")
+  X = dat[,c("L1","L2")]
+  EA.sl = SuperLearner(Y = dat$A, X = X, SL.library = lib)
+  EA = predict(EA.sl, X)$pred
+  EY.sl = SuperLearner(Y = dat$Y, X = X, SL.library = lib)
+  EY = predict(EY.sl, X)$pred
+
+  # Compute OS estimates and CIs
+  res = onestep.condcov(dat$A, dat$Y, EA, EY)
+  ci.width = 1.96 * sqrt(res["sigma2"] / n)
+  ci = c(res["mu"] - ci.width, res["mu"] + ci.width)
+  cover = sim$psi >= ci[1] & sim$psi <= ci[2]
+  
+  c(bias = res["mu"] - sim$psi, sigma2 = res["sigma2"], cover = cover)
+}
+
+# Function to run many simulations with super-learned nuisances
+simulate.sl <- function(n, iters){
+  result = replicate(iters, sim.onestep.sl(n))
+  c(bias = mean(result["bias.mu",]), 
+    varbias = var(result["bias.mu",]),
+    sigma2 = mean(result["sigma2.sigma2",]),
+    varsigma2 = var(result["sigma2.sigma2",]),
+    coverage = mean(result["cover.mu",]))
+}
+
+```
+
+The code below runs the simulation with super learning and summarizes results.
+
+```{r, cache=T}
+sim.result.sl = sapply(n, function(N){simulate.sl(N, 5)})
+
+# Create dataframe and compute CIs
+sim.sl.df = data.frame(t(sim.result.sl))
+sim.sl.df$lower = sim.sl.df$bias - 1.96 * sqrt(sim.sl.df$varbias/iters)
+sim.sl.df$upper = sim.sl.df$bias + 1.96 * sqrt(sim.sl.df$varbias/iters)
+
+```
+
+As in part (a), the first plot depicts the bias of the estimator. We can see that even using super learning, the OS estimator converges to the truth as sample size increases.
+
+```{r, cache=T}
+ggplot(sim.sl.df) + geom_line(aes(x = n, y = bias), linewidth = 1.1, color = "orange") + 
+  geom_errorbar(aes(x = n, ymin = lower, ymax = upper), linewidth = 1.1, color = "orange", width = 100) + 
+  geom_hline(aes(yintercept = 0)) + 
+  theme_light() + 
+  ggtitle("One-Step Estimator - Bias")
+
+```
+
+Furthermore, as in part (a), we 
+
+```{r, cache=T}
+ggplot(sim.sl.df) + geom_line(aes(x = n, y = coverage), color = "orange", linewidth = 1) + 
+  geom_hline(aes(yintercept = 0.95)) + 
+  scale_y_continuous(limits = c(0.6, 1)) + 
+  theme_light() + 
+  ggtitle("One-Step Estimator - 95% CI Coverage")
+```
+
 
 
 :::
-
 
 ::: {.callout-note title="Part (c)"}
+
+Little difference.
+
 :::
 
 {{< pagebreak >}}
 
-## Question 4: Variance-Weighted Treatment Effect
+## Q4: Variance-Weighted Treatment Effect
 
-::: {.callout-note title="Answer"}
+::: {.callout-note title="Derivation of VTE Equation"}
+
+The variance-weighted treatment effect is
+
+$$\psi^{VTE} = \Psi(P) = \frac{E(Cov(Y,A|L))}{E(Var(A|L))}$$
+In this part, our goal is to show
+
+$$\Psi(P) = \frac{E(Cov(Y,A|L))}{E(Var(A|L))} = E(w(L)E(Y^1 - Y^0|L))$$
+where $W(L) = \frac{Var(A|L)}{E(Var(A|L))}$. To do this, we first note that by the definition of conditional variance, since $Y^a$ is independent of $A$, we have
+
+\begin{align*}
+E(w(L)E(Y^1 - Y^0|L)) = \frac{E(Var(A|L)E(Y^1 - Y^0|L))}{E(Var(A|L))} \\
+=  \frac{E(E((A-E(A|L))^2|L)E(Y^1 - Y^0|L))}{E(Var(A|L))}\\
+= \frac{E(E((A-E(A|L))^2(Y^1 - Y^0)|L))}{E(Var(A|L))}\\
+= \frac{E(E((A-E(A|L))(AY^1 - AY^0 - E(AY^1 - AY^0|L))|L))}{E(Var(A|L))}
+\end{align*}
+
+Since it is known that $Y = AY^1 + (1 - A)Y^0$, we note this implies $AY^1 - AY^0 = Y - Y^0$, which we can plug into the above expression. Furthermore, since $Y^0$ is a constant, we can move it outside the expectation (by linearity of expectation) and so
+
+\begin{align*}
+\frac{E(E((A-E(A|L))(AY^1 - AY^0 - E(AY^1 - AY^0|L))|L))}{E(Var(A|L))} \\
+= \frac{E(E((A-E(A|L))(Y - Y^0 - E(Y - Y^0|L))|L))}{E(Var(A|L))} \\
+= \frac{E(E((A-E(A|L))(Y - Y^0 + Y^0 - E(Y|L))|L))}{E(Var(A|L))} \\
+= \frac{E(E((A-E(A|L))(Y - E(Y|L))|L))}{E(Var(A|L))} \\
+= \frac{E(Cov(A,Y|L))}{E(Var(A|L))}
+\end{align*}
+
+proving the desired expression holds.
+
 :::
+
+::: {.callout-note title="Derivation of Influence Function of VTE"}
+
+To compute the EIF, we simply apply the quotient rule to the fraction and plug in the EIF of the conditional covariance computed previously (noting that $E(Var(A|L)) = E(Cov(A, A|L))$, for which we can plug in the EIF of the conditional covariance of $A$ with itself):
+
+\begin{align*}
+\frac{d}{dt}\Psi(P_t)\Bigr\rvert_{t = 0} = \frac{d}{dt}\frac{E_{P_t}(Cov_{P_t}(Y,A|L))}{E_{P_t}(Var_{P_t}(A|L))} \\
+= \frac{\frac{d}{dt}E_{P_t}(Cov_{P_t}(Y,A|L))\Bigr\rvert_{t = 0} \cdot E_{P}(Cov_{P}(A,A|L))}{E_P(Cov_P(A, A|L))^2} - \frac{\frac{d}{dt}E_{P_t}(Cov_{P_t}(A,A|L))\Bigr\rvert_{t = 0} \cdot E_{P}(Cov_{P}(Y,A|L))}{E_P(Cov_P(A, A|L))^2} \\
+= \frac{(Y - E_P(Y|L))(A - E_P(A|L)) - E_P(Cov_P(Y,A|L))}{E_P(Cov_P(A, A|L))} - \frac{(A - E_P(A | L))^2E_P(Cov_P(Y,A|L))}{E_P(Cov_P(A, A|L))^2}\\ + \frac{E_P(Cov_P(Y,A|L))}{E_P(Cov_P(Y,A|L))}\\
+= \frac{(A - E_P(A |L))^2}{E(Var(A|L))}\Big(\frac{Y - E(Y|L)}{A - E(A|L)} - \Psi(P)\Big)
+\end{align*}
+
+:::
+
+::: {.callout-note title="Derivation of One-Step Estimator of VTE"}
+
+We can obtain the one-step estimator of the VTE by plugging in the EIF $\phi$ into the general one-step estimator form
+
+$$\Psi(\hat{P}_n) + \frac{1}{n}\sum_{i=1}^n\phi(O_i, \hat{P}_n)$$
+Using the EIF result from the previous part of this problem at $P = \hat{P}_n$, we have that
+
+\begin{align*}
+\Psi(\hat{P}_n) + \frac{1}{n}\sum_{i=1}^n\phi(O_i, \hat{P}_n) \\
+= \Psi(\hat{P}_n) + \frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))^2}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\Big(\frac{Y_i - E_{\hat{P}_n}(Y_i|L_i)}{A_i - E_{\hat{P}_n}(A_i|L_i)} - \Psi(\hat{P}_n)\Big)\\
+= \Psi(\hat{P}_n) + \frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))(Y_i - E_{\hat{P}_n}(Y_i|L_i))}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))} - \frac{(A_i - E_{\hat{P}_n}(A_i |L))^2}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\Psi(\hat{P}_n)\\
+\end{align*}
+
+But note that if $\Psi(\hat{P}_n) \rightarrow \Psi(\tilde{P})$ then $\frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))^2}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\Psi(\hat{P}_n) \overset{P}{\rightarrow} \Psi(\tilde{P})$ which implies that
+
+$$\Psi(\hat{P}_n) - \frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))^2}{E_{\hat{P}_n}(Var_{\hat{P}_n}(A_i|L_i))}\Psi(\hat{P}_n) = o_P(1)$$
+
+so the one-step bias-corrected estimator is 
+
+$$\frac{1}{n}\sum_{i=1}^n \frac{(A_i - E_{\hat{P}_n}(A_i |L))(Y_i - E_{\hat{P}_n}(Y_i|L_i))}{E_{\hat{P}_n}((A_i - E_{\hat{P}_n}(A_i |L))^2)} + o_P(1)$$
+
+
+:::
+
 
 {{< pagebreak >}}
 
-## Question 5: Variance-Weighted Treatment Effect in the NHEFS Dataset
+## Q5: Variance-Weighted Treatment Effect in the NHEFS Dataset
 
-::: {.callout-note title="Answer"}
+::: {.callout-note title="Calculate VTE"}
+
+```{r}
+# Define the one-step estimator for the variance-weighted treatment effect
+vte_onestep <- function(x){
+  # Get intermediate variables
+  A = x[,1]
+  Y = x[,2]
+  EA = x[,3]
+  EY = x[,4]
+  Acenter = A - EA
+  Ycenter = Y - EY
+  EVar = mean(Acenter^2)
+  
+  # Compute one-step estimator
+  psi = mean(Acenter * Ycenter) / EVar
+  
+  # include analytic variance calculation for ease of use
+  sigma2 = var((Acenter^2 / EVar) * ((Ycenter/Acenter) - psi))
+  
+  return(c(vte = psi, se = sqrt(sigma2 / length(A))))
+}
+
+```
+
+
+```{r}
+# Prepare the data
+df = read.csv("nhefs.csv") %>% 
+  select(wt82_71, qsmk, sex, age, race, education, 
+         smokeintensity, smokeyrs, active, exercise, wt71) %>% 
+  transform(education = factor(education), active = factor(active), 
+            exercise = factor(exercise), race = factor(race)) %>%
+  drop_na(wt82_71)
+
+# Estimate nuisance parameters
+lib = c("SL.glm", "SL.ranger", "SL.earth")
+L = df %>% select(-wt82_71, -qsmk)
+Amodel = CV.SuperLearner(Y = df$qsmk, X = L, SL.library = lib)
+Ymodel = CV.SuperLearner(Y = df$wt82_71, X = L, SL.library = lib)
+
+# Package components of one-step estimation
+x = data.frame(A = df$qsmk, Y = df$wt82_71, 
+               EA = Amodel$discreteSL.predict, 
+               EY = Ymodel$discreteSL.predict)
+
+# Get one-step estimate
+result = vte_onestep(x)
+result
+
+
+```
 :::
 
-## References
+::: {.callout-note title="Calculate VTE"}
 
-::: {#refs}
+```{r}
+# Bootstrap the VTE One-step estimator statistic
+vte_onestep_boot <- function(x, d){vte_onestep(x[d,])}
+boot_result = boot(x, vte_onestep_boot, R = 1000)
+se_boot = sqrt(var(boot_result$t[,1]))
+
+c(bootstrapped.se = se_boot, analytic = result["se"])
+
+
+```
+
+
 :::
+
